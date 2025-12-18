@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>WebSSH</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" rel="stylesheet">
+    <style>
+        body { background: #f5f6f8; }
+        #terminal { height: 500px; background: #000; }
+    </style>
+</head>
+<body>
+<div class="container mt-4">
+    <h4 class="mb-3">WebSSH 控制台</h4>
+
+    <!-- 静态 Alert -->
+    <div id="alert-placeholder" style="display: none">
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <span id="err_msg">-</span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <input id="host" class="form-control" placeholder="服务器 IP">
+                </div>
+                <div class="col-md-2">
+                    <input id="port" class="form-control" placeholder="端口" value="22">
+                </div>
+                <div class="col-md-2">
+                    <input id="username" class="form-control" placeholder="用户名" value="root">
+                </div>
+                <div class="col-md-2">
+                    <input id="password" type="password" class="form-control" placeholder="密码">
+                </div>
+                <div class="col-md-1">
+                    <button id="connect-btn" class="btn btn-primary w-100">连接</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">终端</div>
+        <div class="card-body p-0">
+            <div id="terminal"></div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    const term = new Terminal({ cursorBlink: true, fontSize: 14, theme: {background: "#000"} });
+    term.open(document.getElementById('terminal'));
+
+    let socket;
+    let connected = false;
+
+    // 表单 Alert 提示
+    function showAlert(msg) {
+        const alertContainer = document.getElementById("alert-placeholder");
+        const errMsgSpan = document.getElementById("err_msg");
+        if(!alertContainer || !errMsgSpan) return;
+        errMsgSpan.textContent = msg;
+        alertContainer.style.display = "block";
+        // 触发动画
+        alertContainer.classList.remove("show");
+        void alertContainer.offsetWidth;
+        alertContainer.classList.add("show");
+    }
+
+    // 关闭按钮事件
+    const closeBtn = document.querySelector("#alert-placeholder .btn-close");
+    closeBtn.addEventListener("click", () => {
+        const alertContainer = document.getElementById("alert-placeholder");
+        alertContainer.classList.remove("show");
+        alertContainer.style.display = "none";
+    });
+
+    // 禁用/启用表单
+    function setFormDisabled(disabled) {
+        host.disabled = disabled;
+        port.disabled = disabled;
+        username.disabled = disabled;
+        password.disabled = disabled;
+    }
+
+    // IP / Port 校验
+    function isValidIP(ip) {
+        const re = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+        return re.test(ip);
+    }
+    function isValidPort(port) {
+        const p = parseInt(port);
+        return !isNaN(p) && p > 0 && p <= 65535;
+    }
+
+    // 安全 resize
+    function safeResize() {
+        if (!term._core || !term._core._renderService || !term._core._renderService.dimensions) return;
+
+        const cellWidth = term._core._renderService.dimensions.actualCellWidth;
+        const cellHeight = term._core._renderService.dimensions.actualCellHeight;
+
+        if(!cellWidth || !cellHeight) return;
+
+        const cols = Math.floor(document.getElementById('terminal').clientWidth / cellWidth);
+        const rows = Math.floor(document.getElementById('terminal').clientHeight / cellHeight);
+        if(cols > 0 && rows > 0){
+            term.resize(cols, rows);
+            if(socket && connected){
+                socket.send(JSON.stringify({type:"resize", cols, rows}));
+            }
+        }
+    }
+
+    window.addEventListener('resize', safeResize);
+    setTimeout(safeResize, 100);
+
+    // 连接 / 断开按钮
+    document.getElementById("connect-btn").addEventListener("click", () => {
+        if(connected && socket){
+            socket.close();
+        } else {
+            connect();
+        }
+    });
+
+    function connect() {
+        const hostVal = host.value.trim();
+        const portVal = port.value.trim() || "22";
+        const usernameVal = username.value.trim() || "root";
+        const passwordVal = password.value;
+
+        // 参数校验
+        if(!hostVal){ showAlert("请输入服务器 IP"); host.focus(); return; }
+        if(!isValidIP(hostVal)){ showAlert("IP 格式不正确"); host.focus(); return; }
+        if(!isValidPort(portVal)){ showAlert("端口不合法"); port.focus(); return; }
+        if(!usernameVal){ showAlert("请输入用户名"); username.focus(); return; }
+        if(!passwordVal){ showAlert("请输入密码"); password.focus(); return; }
+
+        socket = new WebSocket("ws://localhost:8080/ws");
+        term.writeln("\r\n\x1b[33m正在连接 SSH...\x1b[0m");
+
+        socket.onopen = () => {
+            socket.send(JSON.stringify({
+                type: "connect",
+                host: hostVal,
+                port: parseInt(portVal),
+                username: usernameVal,
+                password: passwordVal
+            }));
+        };
+
+        socket.onmessage = e => {
+            try{
+                const msg = JSON.parse(e.data);
+                switch(msg.code){
+                    case 0: // 普通输出
+                        term.write(msg.message);
+                        break;
+                    case 1: // 连接成功
+                        term.write(msg.message);
+                        connected = true;
+                        setFormDisabled(true);
+                        document.getElementById("connect-btn").textContent = "断开连接";
+                        safeResize();
+                        break;
+                    case 2: // 连接过程中或则连接失败
+                        term.writeln("\r\n\x1b[31m" + msg.message.replace(/\r\n/g,'') + "\x1b[0m");
+                        break;
+                    default:
+                        term.write(msg.message);
+                }
+            } catch(err){
+                term.write(e.data);
+            }
+        };
+
+        socket.onclose = () => {
+            if(connected){
+                term.writeln("\r\n\x1b[31m连接断开\x1b[0m");
+            } else {
+                term.writeln("\r\n\x1b[31mSSH 连接失败或已关闭\x1b[0m");
+            }
+            connected = false;
+            setFormDisabled(false);
+            document.getElementById("connect-btn").textContent = "连接";
+            safeResize();
+        };
+
+        socket.onerror = err => {
+            term.writeln("\r\n\x1b[31mWebSocket 连接错误: " + err.message + "\x1b[0m");
+        };
+    }
+
+    // 终端输入发送
+    term.onData(data => {
+        if(socket && socket.readyState === 1){
+            socket.send(JSON.stringify({type:"data", data:data}));
+        }
+    });
+</script>
+</body>
+</html>
