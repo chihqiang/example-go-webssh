@@ -1,3 +1,5 @@
+github.com/chihqiang/logx v0.0.0-20251218085236-fa4e219d0ac9 h1:Si1zXWNQD67AGY//bDPUZybiapjwDah+JuKsWSkx4UI=
+github.com/chihqiang/logx v0.0.0-20251218085236-fa4e219d0ac9/go.mod h1:Ti/Rm0FhuaMqMwaTkKBUXf42PTwhjJPXbqebcIVfWU8=
 github.com/fatih/color v1.18.0 h1:S8gINlzdQ840/4pfAwic/ZE0djQEH3wM94VfqLTZcOM=
 github.com/fatih/color v1.18.0/go.mod h1:4FelSpRwEGDpQ12mAdzqdOukCy4u8WUtOY6lkT/6HfU=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=

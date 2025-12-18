@@ -1,9 +1,9 @@
 package ws
 
 import (
-	"chihqiang/webssh/logx"
 	"encoding/json"
 	"fmt"
+	"github.com/chihqiang/logx"
 	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/ssh"
 	"io"
